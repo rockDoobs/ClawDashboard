@@ -58,6 +58,46 @@ async function runCli(command, timeout = CLI_TIMEOUT_MS) {
   });
 }
 
+async function runCliNdjson(command, timeout = CLI_TIMEOUT_MS) {
+  return new Promise((resolve, reject) => {
+    const timeoutId = setTimeout(() => {
+      reject(new Error(`CLI command timed out after ${timeout}ms: ${command}`));
+    }, timeout);
+
+    exec(command, { maxBuffer: 1024 * 1024 }, (error, stdout, stderr) => {
+      clearTimeout(timeoutId);
+
+      if (error) {
+        console.error(`CLI error for "${command}":`, error.message);
+        reject(new Error(`CLI error: ${error.message}`));
+        return;
+      }
+
+      if (stderr && !stdout) {
+        console.error(`CLI stderr for "${command}":`, stderr);
+        reject(new Error(`CLI stderr: ${stderr}`));
+        return;
+      }
+
+      try {
+        const lines = stdout.trim().split('\n');
+        const results = [];
+        for (const line of lines) {
+          if (line.trim()) {
+            const parsed = JSON.parse(line);
+            results.push(parsed);
+          }
+        }
+        resolve(results);
+      } catch (parseError) {
+        console.error(`Failed to parse NDJSON for "${command}":`, parseError.message);
+        console.error('Raw output:', stdout.substring(0, 500));
+        reject(new Error(`Failed to parse NDJSON: ${parseError.message}`));
+      }
+    });
+  });
+}
+
 /**
  * Get status from OpenClaw CLI
  * @returns {Promise<object>} Status data
@@ -79,7 +119,7 @@ async function getHealth() {
  * @returns {Promise<object>} Logs data
  */
 async function getLogs() {
-  return runCli('openclaw logs --json');
+  return runCliNdjson('openclaw logs --json');
 }
 
 /**
@@ -119,7 +159,7 @@ function calculateStatus(lastActiveMs, hasRecentErrors = false) {
  * @returns {string} Human-readable time
  */
 function formatTimeAgo(ms) {
-  if (!ms || ms < 0) return 'never';
+  if (!ms || ms < 0 || !isFinite(ms)) return 'Never';
   
   const seconds = Math.floor(ms / 1000);
   const minutes = Math.floor(seconds / 60);
