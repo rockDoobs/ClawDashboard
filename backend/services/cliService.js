@@ -100,18 +100,94 @@ async function runCliNdjson(command, timeout = CLI_TIMEOUT_MS) {
 
 /**
  * Get status from OpenClaw CLI
- * @returns {Promise<object>} Status data
+ * @returns {Promise<object>} Status data with normalized structure
  */
 async function getStatus() {
-  return runCli('openclaw status --json');
+  const rawStatus = await runCli('openclaw status --json');
+  
+  // Normalize byAgent from array to object if needed
+  if (rawStatus?.sessions?.byAgent && Array.isArray(rawStatus.sessions.byAgent)) {
+    const byAgentObj = {};
+    for (const agent of rawStatus.sessions.byAgent) {
+      const agentId = agent.agentId;
+      if (!agentId) continue;
+      
+      // Get the most recent session for this agent to extract token/model info
+      const recentSession = agent.recent && agent.recent.length > 0 ? agent.recent[0] : null;
+      
+      byAgentObj[agentId] = {
+        sessionCount: agent.count || 0,
+        model: recentSession?.model || 'glm-5',
+        contextTokens: recentSession?.contextTokens || 204800,
+        inputTokens: recentSession?.inputTokens || 0,
+        outputTokens: recentSession?.outputTokens || 0,
+        totalTokens: recentSession?.totalTokens || 0,
+        lastActiveAgeMs: recentSession?.age || Infinity
+      };
+    }
+    rawStatus.sessions.byAgent = byAgentObj;
+  }
+  
+  return rawStatus;
 }
 
 /**
  * Get health from OpenClaw CLI
- * @returns {Promise<object>} Health data
+ * @returns {Promise<object>} Health data with normalized structure
  */
 async function getHealth() {
-  return runCli('openclaw health --json');
+  const rawHealth = await runCli('openclaw health --json');
+  
+  // Normalize the health structure
+  // The actual CLI returns: { ok, channels: { telegram: { running, configured, ... } } }
+  // We need to transform it to match expected structure with gateway and channel status
+  
+  const normalized = {
+    ok: rawHealth.ok || false,
+    gateway: {
+      status: 'unknown',
+      uptime: 'N/A',
+      uptimeSeconds: 0,
+      version: 'N/A',
+      pid: null
+    },
+    channels: {}
+  };
+  
+  // Get gateway status from the status command if possible
+  // For now, infer gateway status from overall health
+  if (rawHealth.ok) {
+    normalized.gateway.status = 'running';
+  }
+  
+  // Normalize channels
+  if (rawHealth.channels) {
+    for (const [channelName, channelData] of Object.entries(rawHealth.channels)) {
+      if (typeof channelData === 'string') {
+        normalized.channels[channelName] = {
+          status: channelData,
+          connectedAt: null
+        };
+      } else if (typeof channelData === 'object') {
+        // Map 'running' boolean to 'connected'/'disconnected' status
+        let status = 'unknown';
+        if (channelData.running === true) {
+          status = 'connected';
+        } else if (channelData.running === false) {
+          status = channelData.configured ? 'disconnected' : 'not_configured';
+        }
+        
+        normalized.channels[channelName] = {
+          status: status,
+          connectedAt: channelData.lastStartAt || null,
+          configured: channelData.configured || false,
+          running: channelData.running || false
+        };
+      }
+    }
+  }
+  
+  return normalized;
 }
 
 /**

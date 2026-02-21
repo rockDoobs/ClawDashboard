@@ -37,7 +37,7 @@ router.get('/', async (req, res) => {
       })
     ]);
 
-    // Process agents data
+    // Process agents data - byAgent is now normalized to object by cliService
     const agents = [];
     let totalTokens = 0;
     let totalSessions = 0;
@@ -73,16 +73,43 @@ router.get('/', async (req, res) => {
       }
     }
 
-    // Process health data
+    // Process health data - now normalized by cliService
     const health = {
       gateway: {
-        status: healthData?.gateway?.status || 'unknown',
-        uptime: healthData?.gateway?.uptime || 'N/A',
-        version: healthData?.gateway?.version || 'N/A'
+        status: 'unknown',
+        uptime: 'N/A',
+        version: 'N/A'
       },
       channels: {},
       overall: 'unknown'
     };
+    
+    // Extract gateway info from status if available
+    if (statusData?.gateway) {
+      if (statusData.gateway.reachable === true) {
+        health.gateway.status = 'running';
+      } else if (statusData.gateway.reachable === false) {
+        health.gateway.status = 'stopped';
+      }
+      if (statusData.gateway.self?.version) {
+        health.gateway.version = statusData.gateway.self.version;
+      }
+    }
+    
+    // Fallback to health data
+    if (healthData?.gateway) {
+      if (health.gateway.status === 'unknown') {
+        health.gateway.status = healthData.gateway.status || 'unknown';
+      }
+      if (health.gateway.version === 'N/A' && healthData.gateway.version) {
+        health.gateway.version = healthData.gateway.version;
+      }
+    }
+    
+    // If health.ok is true, gateway should be running
+    if (healthData?.ok && health.gateway.status === 'unknown') {
+      health.gateway.status = 'running';
+    }
 
     if (healthData?.channels) {
       for (const [channelName, channelData] of Object.entries(healthData.channels)) {
@@ -94,7 +121,8 @@ router.get('/', async (req, res) => {
 
     // Calculate overall health
     const channelStatuses = Object.values(health.channels);
-    if (health.gateway.status === 'running' && channelStatuses.every(s => s === 'connected')) {
+    if (health.gateway.status === 'running' && 
+        (channelStatuses.length === 0 || channelStatuses.every(s => s === 'connected'))) {
       health.overall = 'healthy';
     } else if (health.gateway.status === 'running') {
       health.overall = 'degraded';
