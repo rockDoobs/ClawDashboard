@@ -24,37 +24,43 @@ router.get('/', async (req, res) => {
   const agentFilter = req.query.agent;
 
   try {
-    const logsData = await cliService.getLogs();
+    const logsArray = await cliService.getLogs();
 
     let logs = [];
     let totalErrors = 0;
     let totalWarnings = 0;
 
-    if (logsData?.logs && Array.isArray(logsData.logs)) {
+    // Handle NDJSON array from CLI (each line is a separate object)
+    if (Array.isArray(logsArray)) {
+      // Filter for log entries only (skip meta entries)
+      const logEntries = logsArray.filter(entry => entry.type === 'log');
+      
       // Count totals
-      logsData.logs.forEach(log => {
+      logEntries.forEach(log => {
         if (log.level === 'error') totalErrors++;
         if (log.level === 'warn') totalWarnings++;
       });
 
       // Filter logs
-      logs = logsData.logs
+      logs = logEntries
         .filter(log => {
           // Level filter
           if (level !== 'all' && log.level !== level) return false;
-          // Agent filter
-          if (agentFilter && log.agent !== agentFilter) return false;
+          // Agent filter (extract from raw if available)
+          const agent = log.agent || (log.raw ? JSON.parse(log.raw).agent : null);
+          if (agentFilter && agent !== agentFilter) return false;
           return true;
         })
         .slice(0, limit)
         .map((log, index) => ({
           id: `log-${String(index + 1).padStart(3, '0')}`,
-          timestamp: log.timestamp,
+          timestamp: log.time || log.timestamp,
           level: log.level,
           message: log.message,
-          agent: log.agent,
+          agent: log.agent || null,
           session: log.session || null,
-          stack: log.stack || null
+          stack: log.stack || null,
+          raw: log.raw || null
         }));
     }
 

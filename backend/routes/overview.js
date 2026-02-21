@@ -104,13 +104,13 @@ router.get('/', async (req, res) => {
 
     // Process logs (errors only, limited)
     const logs = [];
-    if (logsData?.logs && Array.isArray(logsData.logs)) {
-      logsData.logs
-        .filter(log => log.level === 'error')
+    if (Array.isArray(logsData)) {
+      logsData
+        .filter(entry => entry.type === 'log' && entry.level === 'error')
         .slice(0, 5)
         .forEach(log => {
           logs.push({
-            timestamp: log.timestamp,
+            timestamp: log.time || log.timestamp,
             level: log.level,
             message: log.message,
             agent: log.agent
