@@ -16,16 +16,47 @@ router.get('/', async (req, res) => {
   const timestamp = new Date().toISOString();
   
   try {
-    const healthData = await cliService.getHealth();
+    // Get both health and status for comprehensive info
+    const [healthData, statusData] = await Promise.all([
+      cliService.getHealth().catch(e => {
+        console.error('Failed to get health:', e.message);
+        return null;
+      }),
+      cliService.getStatus().catch(e => {
+        console.error('Failed to get status:', e.message);
+        return null;
+      })
+    ]);
 
-    // Process gateway status
+    // Process gateway status - prefer status command data
     const gateway = {
-      status: healthData?.gateway?.status || 'unknown',
-      uptime: healthData?.gateway?.uptime || 'N/A',
-      uptimeSeconds: healthData?.gateway?.uptimeSeconds || 0,
-      version: healthData?.gateway?.version || 'N/A',
-      pid: healthData?.gateway?.pid || null
+      status: 'unknown',
+      uptime: 'N/A',
+      uptimeSeconds: 0,
+      version: 'N/A',
+      pid: null
     };
+    
+    // Extract gateway info from status if available
+    if (statusData?.gateway) {
+      if (statusData.gateway.reachable === true) {
+        gateway.status = 'running';
+      } else if (statusData.gateway.reachable === false) {
+        gateway.status = 'stopped';
+      }
+      if (statusData.gateway.self?.version) {
+        gateway.version = statusData.gateway.self.version;
+      }
+    } else if (healthData?.gateway) {
+      // Fallback to health data
+      gateway.status = healthData.gateway.status || 'unknown';
+      gateway.version = healthData.gateway.version || 'N/A';
+    }
+    
+    // If health.ok is true, gateway should be running
+    if (healthData?.ok && gateway.status === 'unknown') {
+      gateway.status = 'running';
+    }
 
     // Process channels
     const channels = {};
@@ -64,7 +95,7 @@ router.get('/', async (req, res) => {
     if (channelStatuses.some(s => s === 'disconnected' || s === 'error')) {
       if (overall !== 'critical') overall = 'degraded';
       indicators.channels = 'yellow';
-    } else if (channelStatuses.some(s => s === 'connecting')) {
+    } else if (channelStatuses.some(s => s === 'connecting' || s === 'not_configured')) {
       if (overall !== 'critical') overall = 'degraded';
       indicators.channels = 'yellow';
     }
