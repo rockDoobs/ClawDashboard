@@ -3,6 +3,8 @@
  * 
  * REST API for OpenClaw monitoring dashboard
  * Port: 3200
+ * 
+ * In production, this server also serves the frontend static files.
  */
 
 const express = require('express');
@@ -18,6 +20,10 @@ const overviewRouter = require('./routes/overview');
 
 const app = express();
 const PORT = process.env.PORT || 3200;
+
+// Determine if serving frontend (production mode)
+const SERVE_FRONTEND = process.env.SERVE_FRONTEND !== 'false';
+const FRONTEND_DIST = path.join(__dirname, '..', 'frontend', 'dist');
 
 // Middleware
 app.use(cors({
@@ -42,28 +48,54 @@ app.use('/api/logs', logsRouter);
 app.use('/api/sessions', sessionsRouter);
 app.use('/api/overview', overviewRouter);
 
-// Root endpoint
-app.get('/', (req, res) => {
-  res.json({
-    name: 'ClawDashboard API',
-    version: '1.0.0',
-    endpoints: [
-      'GET /api/overview - Combined dashboard data',
-      'GET /api/agents - Agent status + tokens',
-      'GET /api/agents/:id - Single agent details',
-      'GET /api/health - Gateway + channels',
-      'GET /api/logs - Recent errors',
-      'GET /api/sessions - Session details'
-    ]
-  });
-});
-
-// Health check for load balancers
+// Health check for load balancers (before static serving)
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
-// 404 handler
+// Serve frontend static files in production
+if (SERVE_FRONTEND) {
+  // Check if frontend dist exists
+  const fs = require('fs');
+  if (fs.existsSync(FRONTEND_DIST)) {
+    app.use(express.static(FRONTEND_DIST));
+    console.log(`📁 Serving frontend from ${FRONTEND_DIST}`);
+  }
+}
+
+// Root endpoint - API info (only if not serving frontend)
+if (!SERVE_FRONTEND) {
+  app.get('/', (req, res) => {
+    res.json({
+      name: 'ClawDashboard API',
+      version: '1.0.0',
+      endpoints: [
+        'GET /api/overview - Combined dashboard data',
+        'GET /api/agents - Agent status + tokens',
+        'GET /api/agents/:id - Single agent details',
+        'GET /api/health - Gateway + channels',
+        'GET /api/logs - Recent errors',
+        'GET /api/sessions - Session details'
+      ]
+    });
+  });
+}
+
+// SPA fallback - serve index.html for any non-API route (must be after API routes)
+if (SERVE_FRONTEND) {
+  const fs = require('fs');
+  if (fs.existsSync(FRONTEND_DIST)) {
+    app.get('*', (req, res, next) => {
+      // Skip API routes and health check
+      if (req.path.startsWith('/api') || req.path === '/health') {
+        return next();
+      }
+      res.sendFile(path.join(FRONTEND_DIST, 'index.html'));
+    });
+  }
+}
+
+// 404 handler (for API routes that don't exist)
 app.use((req, res) => {
   res.status(404).json({
     error: {
@@ -89,8 +121,11 @@ app.use((err, req, res, next) => {
 
 // Start server
 app.listen(PORT, () => {
-  console.log(`🚀 ClawDashboard API running on port ${PORT}`);
+  console.log(`🚀 ClawDashboard running on port ${PORT}`);
   console.log(`📡 API available at http://localhost:${PORT}/api`);
+  if (SERVE_FRONTEND) {
+    console.log(`🌐 Frontend available at http://localhost:${PORT}`);
+  }
   console.log(`⏰ Started at ${new Date().toISOString()}`);
 });
 
