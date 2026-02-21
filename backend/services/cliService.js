@@ -169,19 +169,34 @@ async function getHealth() {
           connectedAt: null
         };
       } else if (typeof channelData === 'object') {
-        // Map 'running' boolean to 'connected'/'disconnected' status
+        // Determine connectivity based on probe.ok first
+        // Channel is connected if probe.ok is true (can reach the service)
+        // even if the listener is not running
         let status = 'unknown';
-        if (channelData.running === true) {
+        const probeOk = channelData.probe?.ok === true;
+        const isRunning = channelData.running === true;
+        const isConfigured = channelData.configured === true;
+
+        if (probeOk) {
+          // Probe successful - channel is connected
           status = 'connected';
-        } else if (channelData.running === false) {
-          status = channelData.configured ? 'disconnected' : 'not_configured';
+        } else if (isRunning) {
+          // Running but probe failed - still trying to connect
+          status = 'connecting';
+        } else if (isConfigured) {
+          // Configured but not running and probe failed
+          status = 'disconnected';
+        } else {
+          // Not configured
+          status = 'not_configured';
         }
         
         normalized.channels[channelName] = {
           status: status,
           connectedAt: channelData.lastStartAt || null,
-          configured: channelData.configured || false,
-          running: channelData.running || false
+          configured: isConfigured,
+          running: isRunning,
+          probeOk: probeOk
         };
       }
     }

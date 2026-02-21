@@ -70,7 +70,10 @@ router.get('/', async (req, res) => {
         } else {
           channels[channelName] = {
             status: channelData.status || 'unknown',
-            connectedAt: channelData.connectedAt || null
+            connectedAt: channelData.connectedAt || null,
+            configured: channelData.configured || false,
+            running: channelData.running || false,
+            probeOk: channelData.probeOk || false
           };
         }
       }
@@ -91,11 +94,28 @@ router.get('/', async (req, res) => {
     }
 
     // Check channels
-    const channelStatuses = Object.values(channels).map(c => c.status);
-    if (channelStatuses.some(s => s === 'disconnected' || s === 'error')) {
+    // Channels with probeOk=true are considered healthy even if not running
+    // Channels with probeOk=false and configured=true are disconnected (problem)
+    const channelList = Object.values(channels);
+    const hasDisconnected = channelList.some(c => c.status === 'disconnected' || c.status === 'error');
+    const hasConnecting = channelList.some(c => c.status === 'connecting');
+    const hasNotConfigured = channelList.some(c => c.status === 'not_configured');
+    const hasProbeOkNotRunning = channelList.some(c => c.probeOk && !c.running);
+
+    if (hasDisconnected) {
+      // Configured but can't connect - this is a problem
       if (overall !== 'critical') overall = 'degraded';
       indicators.channels = 'yellow';
-    } else if (channelStatuses.some(s => s === 'connecting' || s === 'not_configured')) {
+    } else if (hasConnecting) {
+      // Still trying to connect
+      if (overall !== 'critical') overall = 'degraded';
+      indicators.channels = 'yellow';
+    } else if (hasProbeOkNotRunning) {
+      // Connected but listener not running - minor degradation
+      if (overall === 'healthy') overall = 'degraded';
+      indicators.channels = 'yellow';
+    } else if (hasNotConfigured) {
+      // Not configured - informational, not necessarily degraded
       if (overall !== 'critical') overall = 'degraded';
       indicators.channels = 'yellow';
     }
