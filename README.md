@@ -25,8 +25,15 @@ ClawDashboard/
 │   ├── server.js       # Express REST API
 │   ├── routes/         # API endpoints
 │   └── services/       # CLI wrapper
-├── frontend/           # (coming soon)
-└── tests/              # (coming soon)
+├── frontend/           # React + Vite + Tailwind
+│   ├── src/
+│   │   ├── components/ # UI components
+│   │   ├── hooks/      # React hooks
+│   │   ├── services/   # API client
+│   │   └── utils/      # Utilities
+│   └── package.json
+└── tests/
+    └── TEST-RESULTS.md # Test results (by Tessa)
 ```
 
 ---
@@ -42,8 +49,43 @@ ClawDashboard/
 ### Installation
 
 ```bash
-cd /home/openclaw/.openclaw/workspace/POC/ClawDashboard/backend
+# Install backend dependencies
+cd backend
 npm install
+
+# Install frontend dependencies
+cd ../frontend
+npm install
+```
+
+---
+
+## Running the Dashboard
+
+### Option 1: Development Mode (Recommended for Testing)
+
+```bash
+# Terminal 1: Start backend
+cd backend
+npm install
+node server.js
+
+# Terminal 2: Start frontend
+cd frontend
+npm install
+npm run dev
+```
+
+Then open http://localhost:5173 in your browser.
+
+### Option 2: Production Build
+
+```bash
+# Build frontend
+cd frontend
+npm run build
+
+# Serve with nginx (see Deployment section below)
 ```
 
 ---
@@ -55,7 +97,7 @@ Since you access the server via SSH (no browser), use `curl` to test.
 ### Start the Server
 
 ```bash
-cd /home/openclaw/.openclaw/workspace/POC/ClawDashboard/backend
+cd backend
 node server.js
 ```
 
