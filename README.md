@@ -22,7 +22,7 @@ ClawDashboard/
 │   ├── ARCHITECTURE.md # System architecture (by Archie)
 │   └── PRD-agent-dashboard.md # Requirements (by Alana)
 ├── backend/
-│   ├── server.js       # Express REST API
+│   ├── server.js       # Express REST API (also serves frontend in prod)
 │   ├── routes/         # API endpoints
 │   └── services/       # CLI wrapper
 ├── frontend/           # React + Vite + Tailwind
@@ -62,7 +62,9 @@ npm install
 
 ## Running the Dashboard
 
-### Option 1: Development Mode (Recommended for Testing)
+### Option 1: Development Mode (with Hot Reload)
+
+Run frontend and backend separately. Vite proxies `/api` calls to the backend automatically.
 
 ```bash
 # Terminal 1: Start backend
@@ -70,7 +72,7 @@ cd backend
 npm install
 node server.js
 
-# Terminal 2: Start frontend
+# Terminal 2: Start frontend dev server
 cd frontend
 npm install
 npm run dev
@@ -78,21 +80,115 @@ npm run dev
 
 Then open http://localhost:5173 in your browser.
 
-### Option 2: Production Build
+The Vite dev server proxies `/api/*` requests to `http://localhost:3200`.
+
+### Option 2: Production Mode (Single Server)
+
+Build the frontend and serve everything from a single Express server:
 
 ```bash
 # Build frontend
 cd frontend
 npm run build
 
-# Serve with nginx (see Deployment section below)
+# Start server (serves both API and frontend)
+cd ../backend
+node server.js
+```
+
+Then open http://localhost:3200 in your browser.
+
+The Express server:
+- Serves the API at `/api/*`
+- Serves the frontend static files at `/*`
+- Falls back to `index.html` for SPA routing
+
+---
+
+## Production Deployment with Tailscale Serve
+
+This setup lets you access the dashboard securely from anywhere on your Tailscale network via HTTPS.
+
+### Step 1: Build and Start the Server
+
+```bash
+# SSH into your VPS
+ssh your-user@your-vps
+
+# Clone or navigate to the repo
+cd /path/to/ClawDashboard
+
+# Install dependencies
+cd backend && npm install
+cd ../frontend && npm install
+
+# Build frontend for production
+npm run build
+
+# Go back to backend
+cd ../backend
+
+# Start with PM2 (keeps running after disconnect)
+pm2 start server.js --name clawdashboard
+pm2 save
+```
+
+### Step 2: Expose via Tailscale Serve
+
+```bash
+# Check your Tailscale hostname
+tailscale status
+
+# Expose the dashboard via HTTPS on your tailnet
+tailscale serve --bg --https:443 tcp://localhost:3200
+
+# Or use a specific funnel port (if you want public access)
+# tailscale funnel --bg --https:443 tcp://localhost:3200
+```
+
+### Step 3: Access from Any Device
+
+On any device on your Tailscale network:
+
+```
+https://your-hostname.ts.net
+```
+
+### Managing Tailscale Serve
+
+```bash
+# Check current serve config
+tailscale serve status
+
+# Remove the serve config
+tailscale serve --bg=none tcp://localhost:3203
+
+# Or reset all serve configs
+tailscale serve reset
+```
+
+### Server Management with PM2
+
+```bash
+# View logs
+pm2 logs clawdashboard
+
+# Restart after updates
+pm2 restart clawdashboard
+
+# Stop
+pm2 stop clawdashboard
+
+# Auto-start on boot
+pm2 startup
+pm2 save
 ```
 
 ---
 
-## Testing via SSH
+## Testing via SSH (API Only)
 
-Since you access the server via SSH (no browser), use `curl` to test.
+Since you access the server via SSH (no browser), use `curl` to test the API directly.
 
 ### Start the Server
 
@@ -103,8 +199,9 @@ node server.js
 
 You should see:
 ```
-🚀 ClawDashboard API running on port 3200
+🚀 ClawDashboard running on port 3200
 📡 API available at http://localhost:3200/api
+🌐 Frontend available at http://localhost:3200
 ```
 
 ### Test Endpoints (in another SSH session)
@@ -150,77 +247,11 @@ pkill -f "node.*ClawDashboard"
 
 ---
 
-## Access via Tailscale
-
-If you have Tailscale running on your server, you can access the API from any device on your tailnet.
-
-### Option A: Direct Port Access
-
-```bash
-# From another machine on your Tailscale network
-curl http://YOUR_SERVER_TAILSCALE_IP:3200/api/overview
-
-# Find your Tailscale IP
-tailscale ip
-```
-
-### Option B: Tailscale Serve (HTTPS)
-
-```bash
-# Expose port 3200 via Tailscale Serve
-tailscale serve --bg --https=443 tcp://localhost:3200
-
-# Access from any device on tailnet
-curl https://YOUR_HOSTNAME.ts.net/api/overview
-
-# To remove the serve config later
-tailscale serve --bg=none tcp://localhost:3200
-```
-
----
-
-## Production Deployment
-
-### Run with PM2
-
-PM2 keeps the server running and auto-restarts on failure.
-
-```bash
-# Install PM2 globally
-sudo npm install -g pm2
-
-# Start the server
-cd /home/openclaw/.openclaw/workspace/POC/ClawDashboard/backend
-pm2 start server.js --name clawdashboard
-
-# View logs
-pm2 logs clawdashboard
-
-# Restart
-pm2 restart clawdashboard
-
-# Stop
-pm2 stop clawdashboard
-
-# Save PM2 config (auto-start on reboot)
-pm2 save
-pm2 startup
-```
-
-### Check Status
-
-```bash
-pm2 status
-pm2 logs clawdashboard --lines 50
-```
-
----
-
 ## API Endpoints
 
 | Endpoint | Description |
 |----------|-------------|
-| `GET /` | API info |
+| `GET /` | Frontend (production) or API info (dev) |
 | `GET /health` | Health check |
 | `GET /api/overview` | Combined dashboard data |
 | `GET /api/agents` | All agents + tokens |
@@ -277,6 +308,21 @@ kill -9 $(lsof -t -i:3200)
 node server.js
 ```
 
+### Frontend not loading in production
+
+```bash
+# Ensure frontend is built
+cd frontend
+npm run build
+
+# Check dist folder exists
+ls -la dist/
+
+# Restart server
+cd ../backend
+pm2 restart clawdashboard
+```
+
 ### CLI commands fail
 
 ```bash
@@ -298,11 +344,25 @@ openclaw gateway status
 openclaw sessions --json
 ```
 
+### Tailscale Serve not working
+
+```bash
+# Check Tailscale status
+tailscale status
+
+# Check serve config
+tailscale serve status
+
+# Reset and reconfigure
+tailscale serve reset
+tailscale serve --bg --https:443 tcp://localhost:3200
+```
+
 ---
 
 ## Related
 
-- **GitHub Issues:** #25, #26, #27, #28, #29 (Mission Control)
+- **GitHub Issues:** #25, #26, #27, #28, #29, #32 (Mission Control)
 - **Mission Control:** https://github.com/rockDoobs/MissionControl
 - **This Repo:** https://github.com/rockDoobs/ClawDashboard
 
@@ -314,13 +374,14 @@ Built by:
 - **Alana** - Requirements & PRD
 - **Archie** - Architecture
 - **Neil** - Implementation
-- **Tessa** - Testing (coming soon)
+- **Tessa** - Testing
 
 ---
 
 ## Next Steps
 
-- [ ] Build frontend (React)
+- [x] Build frontend (React)
+- [x] Tailscale Serve deployment
 - [ ] Add WebSocket for real-time updates
 - [ ] Add authentication
-- [ ] Deploy behind nginx
+- [ ] Deploy behind nginx (alternative)
