@@ -169,9 +169,11 @@ async function getHealth() {
           connectedAt: null
         };
       } else if (typeof channelData === 'object') {
-        // Map 'running' boolean to 'connected'/'disconnected' status
+        // Map channel connectivity from probe/running booleans.
+        // Some channels (e.g. Telegram) report connected via probe.ok even when running=false.
         let status = 'unknown';
-        if (channelData.running === true) {
+        const probeOk = channelData?.probe?.ok === true;
+        if (probeOk || channelData.running === true) {
           status = 'connected';
         } else if (channelData.running === false) {
           status = channelData.configured ? 'disconnected' : 'not_configured';
@@ -181,7 +183,8 @@ async function getHealth() {
           status: status,
           connectedAt: channelData.lastStartAt || null,
           configured: channelData.configured || false,
-          running: channelData.running || false
+          running: channelData.running || false,
+          probeOk
         };
       }
     }

@@ -33,7 +33,8 @@ function normalizeHealthData(rawHealth) {
         };
       } else if (typeof channelData === 'object') {
         let status = 'unknown';
-        if (channelData.running === true) {
+        const probeOk = channelData?.probe?.ok === true;
+        if (probeOk || channelData.running === true) {
           status = 'connected';
         } else if (channelData.running === false) {
           status = channelData.configured ? 'disconnected' : 'not_configured';
@@ -43,7 +44,8 @@ function normalizeHealthData(rawHealth) {
           status: status,
           connectedAt: channelData.lastStartAt || null,
           configured: channelData.configured || false,
-          running: channelData.running || false
+          running: channelData.running || false,
+          probeOk
         };
       }
     }
@@ -93,7 +95,7 @@ function testHealthNormalization() {
   
   // Check channels
   assert.ok(result.channels.telegram, 'Telegram channel should exist');
-  assert.strictEqual(result.channels.telegram.status, 'disconnected', 'Telegram status should be disconnected when running=false and configured=true');
+  assert.strictEqual(result.channels.telegram.status, 'connected', 'Telegram status should be connected when probe.ok=true even if running=false');
   assert.strictEqual(result.channels.telegram.configured, true, 'Telegram configured should be true');
   assert.strictEqual(result.channels.telegram.running, false, 'Telegram running should be false');
   
@@ -122,6 +124,29 @@ function testStatusNormalization() {
   assert.strictEqual(result.sessions.byAgent.neil.sessionCount, 2, 'neil sessionCount should be 2');
   
   console.log('✓ Status normalization tests passed');
+}
+
+
+function testHealthProbeConnected() {
+  console.log('Testing health with probe-based connectivity...');
+  
+  const healthWithProbe = {
+    ok: true,
+    channels: {
+      telegram: {
+        configured: true,
+        running: false,
+        probe: { ok: true }
+      }
+    }
+  };
+  
+  const result = normalizeHealthData(healthWithProbe);
+  
+  assert.strictEqual(result.channels.telegram.status, 'connected', 'Channel should be connected when probe.ok=true');
+  assert.strictEqual(result.channels.telegram.probeOk, true, 'probeOk should be true');
+  
+  console.log('✓ Health with probe-based connectivity tests passed');
 }
 
 function testHealthWithRunningChannel() {
@@ -185,6 +210,7 @@ console.log('\n=== Running cliService normalization tests ===\n');
 try {
   testHealthNormalization();
   testStatusNormalization();
+  testHealthProbeConnected();
   testHealthWithRunningChannel();
   testHealthWithNotConfiguredChannel();
   testHealthNotOk();
