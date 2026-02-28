@@ -73,10 +73,15 @@ node server.js
 # Terminal 2: Start frontend
 cd frontend
 npm install
+cp .env.example .env   # optional: set VITE_API_BASE_URL for non-default API target
 npm run dev
 ```
 
 Then open http://localhost:5173 in your browser.
+
+Notes:
+- By default, frontend uses same-origin `/api` and Vite proxies `/api` to `http://localhost:3200` in dev.
+- To point frontend at another backend, set `VITE_API_BASE_URL` in `frontend/.env`.
 
 ### Option 2: Production Build
 
@@ -164,18 +169,34 @@ curl http://YOUR_SERVER_TAILSCALE_IP:3200/api/overview
 tailscale ip
 ```
 
-### Option B: Tailscale Serve (HTTPS)
+### Option B: Tailscale Serve (HTTPS, single-origin frontend + API)
+
+This is the recommended setup for the dashboard UI. Serve frontend and backend under one hostname to avoid CORS issues.
 
 ```bash
-# Expose port 3200 via Tailscale Serve
-tailscale serve --bg --https=443 tcp://localhost:3200
+# 1) Build and run frontend preview
+cd frontend
+npm run build
+npm run preview -- --host 127.0.0.1 --port 4173
 
-# Access from any device on tailnet
-curl https://YOUR_HOSTNAME.ts.net/api/overview
+# 2) Run backend
+cd ../backend
+node server.js
 
-# To remove the serve config later
-tailscale serve --bg=none tcp://localhost:3200
+# 3) Expose both on one Tailscale origin
+tailscale serve --bg / http://127.0.0.1:4173
+tailscale serve --bg /api http://127.0.0.1:3200
+tailscale serve --bg /health http://127.0.0.1:3200
+
+# 4) Access from any device on tailnet
+# https://YOUR_HOSTNAME.ts.net
+# (frontend will call /api on the same origin)
+
+# To remove serve config later
+tailscale serve reset
 ```
+
+Optional: If frontend is hosted elsewhere, set `frontend/.env` with `VITE_API_BASE_URL=https://YOUR_HOSTNAME.ts.net` before building.
 
 ---
 

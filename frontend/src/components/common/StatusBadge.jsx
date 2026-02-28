@@ -1,7 +1,6 @@
-import { getStatusColor, getStatusBgColor } from '../../utils/formatters';
+import { getStatusBgColor } from '../../utils/formatters';
 
 export function StatusBadge({ status }) {
-  const colorClass = getStatusColor(status);
   const bgClass = getStatusBgColor(status);
   
   return (
