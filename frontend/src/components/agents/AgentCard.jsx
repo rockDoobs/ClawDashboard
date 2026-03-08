@@ -1,8 +1,10 @@
 import { StatusBadge } from '../common/StatusBadge';
 import { TokenMeter } from '../common/TokenMeter';
-import { formatTokens, formatTimeAgo } from '../../utils/formatters';
+import { formatTokens, formatTimeAgo, getTimeAgoColor } from '../../utils/formatters';
 
 export function AgentCard({ agent }) {
+  const timeAgoColor = getTimeAgoColor(agent.lastActiveMs);
+  
   return (
     <div className="bg-gray-800 rounded-lg p-4 border border-gray-700 hover:border-gray-600 transition-colors">
       <div className="flex items-center justify-between mb-3">
@@ -42,8 +44,14 @@ export function AgentCard({ agent }) {
 
         <div className="flex justify-between text-xs text-gray-400 pt-2 border-t border-gray-700">
           <span>{agent.sessions} sessions</span>
-          <span>{formatTimeAgo(agent.lastActiveMs)}</span>
+          <span className={timeAgoColor} title="Last activity">{formatTimeAgo(agent.lastActiveMs)}</span>
         </div>
+        
+        {agent.hasRecentError && (
+          <div className="text-xs text-red-400 pt-1 border-t border-gray-700">
+            Recent error detected
+          </div>
+        )}
       </div>
     </div>
   );

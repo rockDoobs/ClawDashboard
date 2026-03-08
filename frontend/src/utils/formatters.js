@@ -19,6 +19,42 @@ export function formatTimeAgo(ms) {
   return 'just now';
 }
 
+export function getTimeAgoColor(ms) {
+  if (!ms || ms < 0 || !isFinite(ms)) return 'text-gray-500';
+  
+  const minutes = Math.floor(ms / 60000);
+  
+  if (minutes < 5) return 'text-green-400';
+  if (minutes < 30) return 'text-yellow-400';
+  if (minutes < 60) return 'text-orange-400';
+  return 'text-red-400';
+}
+
+export function formatTokenPeriod(period, tokens) {
+  if (!tokens || !tokens.available) {
+    return { label: period, value: 'N/A', available: false };
+  }
+  return {
+    label: period,
+    value: formatTokens(tokens.total),
+    input: formatTokens(tokens.input),
+    output: formatTokens(tokens.output),
+    available: true
+  };
+}
+
+export function formatContextPercent(percentUsed) {
+  if (percentUsed === undefined || percentUsed === null) return '0%';
+  return `${percentUsed}%`;
+}
+
+export function getContextPercentColor(percentUsed) {
+  if (percentUsed === undefined || percentUsed === null) return 'bg-gray-600';
+  if (percentUsed < 50) return 'bg-green-500';
+  if (percentUsed < 80) return 'bg-yellow-500';
+  return 'bg-red-500';
+}
+
 export function getStatusColor(status) {
   switch (status) {
     case 'working': return 'text-green-500';

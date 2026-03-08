@@ -3,6 +3,7 @@ import { fetchOverview } from './services/api';
 import { AgentGrid } from './components/agents/AgentGrid';
 import { HealthPanel } from './components/health/HealthPanel';
 import { ErrorPanel } from './components/logs/ErrorPanel';
+import { TokenUsagePanel } from './components/common/TokenUsagePanel';
 import { RefreshControls } from './components/common/RefreshControls';
 import { formatTokens } from './utils/formatters';
 
@@ -77,11 +78,20 @@ function App() {
             {/* Main Grid */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
               {/* Agents Grid - Takes up 2 columns */}
-              <div className="lg:col-span-2">
-                <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
-                  <span>🤖</span> Agent Status
-                </h2>
-                <AgentGrid agents={data?.agents} />
+              <div className="lg:col-span-2 space-y-6">
+                <div>
+                  <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
+                    <span>🤖</span> Agent Status
+                  </h2>
+                  <AgentGrid agents={data?.agents} />
+                </div>
+
+                <div>
+                  <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
+                    <span>📊</span> Token Usage
+                  </h2>
+                  <TokenUsagePanel totals={data?.totals} agents={data?.agents} />
+                </div>
               </div>
 
               {/* Sidebar - Health & Errors */}
