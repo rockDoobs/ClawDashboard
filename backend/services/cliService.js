@@ -233,6 +233,97 @@ function calculateStatus(lastActiveMs, hasRecentErrors = false) {
 }
 
 /**
+ * Get agents with recent errors from logs
+ * @param {Array} logs - Array of log entries
+ * @param {number} errorWindowMs - Time window to consider recent (default 5 minutes)
+ * @returns {Set} Set of agent IDs with recent errors
+ */
+function getAgentsWithRecentErrors(logs, errorWindowMs = 5 * 60 * 1000) {
+  const agentsWithErrors = new Set();
+  const now = Date.now();
+  
+  if (!Array.isArray(logs)) return agentsWithErrors;
+  
+  for (const entry of logs) {
+    if (entry.type !== 'log' || entry.level !== 'error') continue;
+    
+    const logTime = entry.time ? new Date(entry.time).getTime() : 
+                    entry.timestamp ? new Date(entry.timestamp).getTime() : null;
+    
+    if (logTime && (now - logTime) < errorWindowMs && entry.agent) {
+      agentsWithErrors.add(entry.agent);
+    }
+  }
+  
+  return agentsWithErrors;
+}
+
+/**
+ * Calculate token aggregations for time periods
+ * @param {Array} sessions - Array of session objects
+ * @param {string} agentId - Optional agent ID to filter by
+ * @returns {Object} Token stats for current session, today, and week
+ */
+function calculateTokenAggregations(sessions, agentId = null) {
+  const result = {
+    current: { input: 0, output: 0, total: 0 },
+    today: { input: 0, output: 0, total: 0, available: false },
+    week: { input: 0, output: 0, total: 0, available: false }
+  };
+  
+  if (!Array.isArray(sessions)) return result;
+  
+  const now = Date.now();
+  const todayStart = new Date().setHours(0, 0, 0, 0);
+  const weekStart = todayStart - (6 * 24 * 60 * 60 * 1000); // Last 7 days
+  
+  let hasTimeData = false;
+  
+  for (const session of sessions) {
+    if (agentId && session.agentId !== agentId) continue;
+    
+    const sessionTime = session.lastActiveAgeMs !== undefined && session.lastActiveAgeMs !== Infinity
+      ? now - session.lastActiveAgeMs
+      : null;
+    
+    if (sessionTime) hasTimeData = true;
+    
+    const input = session.inputTokens || 0;
+    const output = session.outputTokens || 0;
+    const total = input + output;
+    
+    // Current session (most recent)
+    if (!result.current.total || (sessionTime && sessionTime > (now - (result.current.lastActiveMs || Infinity)))) {
+      result.current = { input, output, total, lastActiveMs: session.lastActiveAgeMs };
+    }
+    
+    // Today's tokens
+    if (sessionTime && sessionTime >= todayStart) {
+      result.today.input += input;
+      result.today.output += output;
+      result.today.total += total;
+      result.today.available = true;
+    }
+    
+    // This week's tokens
+    if (sessionTime && sessionTime >= weekStart) {
+      result.week.input += input;
+      result.week.output += output;
+      result.week.total += total;
+      result.week.available = true;
+    }
+  }
+  
+  // If no time data available, mark as N/A
+  if (!hasTimeData) {
+    result.today.available = false;
+    result.week.available = false;
+  }
+  
+  return result;
+}
+
+/**
  * Format milliseconds to human-readable time ago
  * @param {number} ms - Milliseconds
  * @returns {string} Human-readable time
@@ -282,6 +373,8 @@ module.exports = {
   getSessions,
   getAgentMetadata,
   calculateStatus,
+  getAgentsWithRecentErrors,
+  calculateTokenAggregations,
   formatTimeAgo,
   formatTokens,
   calculatePercentUsed,
