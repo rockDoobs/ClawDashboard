@@ -17,7 +17,14 @@ router.get('/', async (req, res) => {
   const timestamp = new Date().toISOString();
   
   try {
-    const statusData = await cliService.getStatus();
+    const [statusData, logsData, sessionsData] = await Promise.all([
+      cliService.getStatus(),
+      cliService.getLogs(),
+      cliService.getSessions()
+    ]);
+    
+    const agentsWithErrors = cliService.getAgentsWithRecentErrors(logsData);
+    const tokenAggs = cliService.calculateTokenAggregations(sessionsData?.sessions);
     
     const agents = [];
     let totalTokens = 0;
@@ -30,17 +37,21 @@ router.get('/', async (req, res) => {
         const tokens = agentData.totalTokens || 0;
         const contextTokens = agentData.contextTokens || 204800;
         const lastActiveMs = agentData.lastActiveAgeMs || Infinity;
-        const status = cliService.calculateStatus(lastActiveMs);
+        const hasError = agentsWithErrors.has(agentId);
+        const status = cliService.calculateStatus(lastActiveMs, hasError);
         
         if (status === 'working') activeAgents++;
         totalTokens += tokens;
         totalSessions += agentData.sessionCount || 0;
+
+        const perAgentTokenAggs = cliService.calculateTokenAggregations(sessionsData?.sessions, agentId);
 
         agents.push({
           id: agentId,
           name: metadata.name,
           emoji: metadata.emoji,
           status: status,
+          hasRecentError: hasError,
           model: agentData.model || 'glm-5',
           contextTokens: contextTokens,
           inputTokens: agentData.inputTokens || 0,
@@ -49,7 +60,12 @@ router.get('/', async (req, res) => {
           percentUsed: cliService.calculatePercentUsed(tokens, contextTokens),
           sessions: agentData.sessionCount || 0,
           lastActiveMs: lastActiveMs,
-          lastActiveText: cliService.formatTimeAgo(lastActiveMs)
+          lastActiveText: cliService.formatTimeAgo(lastActiveMs),
+          tokens: {
+            current: perAgentTokenAggs.current,
+            today: perAgentTokenAggs.today,
+            week: perAgentTokenAggs.week
+          }
         });
       }
     }
@@ -68,7 +84,9 @@ router.get('/', async (req, res) => {
         agents: agents.length,
         activeAgents,
         totalTokens,
-        totalSessions
+        totalSessions,
+        tokensToday: tokenAggs.today,
+        tokensWeek: tokenAggs.week
       }
     });
 
@@ -94,11 +112,14 @@ router.get('/:id', async (req, res) => {
   const agentId = req.params.id;
   
   try {
-    const [statusData, sessionsData] = await Promise.all([
+    const [statusData, sessionsData, logsData] = await Promise.all([
       cliService.getStatus(),
-      cliService.getSessions()
+      cliService.getSessions(),
+      cliService.getLogs()
     ]);
 
+    const agentsWithErrors = cliService.getAgentsWithRecentErrors(logsData);
+    
     // Find the agent
     const agentStats = statusData?.sessions?.byAgent?.[agentId];
     if (!agentStats) {
@@ -115,6 +136,7 @@ router.get('/:id', async (req, res) => {
     const tokens = agentStats.totalTokens || 0;
     const contextTokens = agentStats.contextTokens || 204800;
     const lastActiveMs = agentStats.lastActiveAgeMs || Infinity;
+    const hasError = agentsWithErrors.has(agentId);
 
     // Get sessions for this agent
     const agentSessions = [];
@@ -135,19 +157,22 @@ router.get('/:id', async (req, res) => {
         });
     }
 
+    const tokenAggs = cliService.calculateTokenAggregations(sessionsData?.sessions, agentId);
+
     res.json({
       timestamp,
       agent: {
         id: agentId,
         name: metadata.name,
         emoji: metadata.emoji,
-        status: cliService.calculateStatus(lastActiveMs),
+        status: cliService.calculateStatus(lastActiveMs, hasError),
+        hasRecentError: hasError,
         model: agentStats.model || 'glm-5',
         contextTokens: contextTokens,
         tokens: {
-          input: agentStats.inputTokens || 0,
-          output: agentStats.outputTokens || 0,
-          total: tokens,
+          current: tokenAggs.current,
+          today: tokenAggs.today,
+          week: tokenAggs.week,
           percentUsed: cliService.calculatePercentUsed(tokens, contextTokens)
         },
         sessions: agentSessions,

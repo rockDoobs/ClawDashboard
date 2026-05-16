@@ -37,6 +37,9 @@ router.get('/', async (req, res) => {
       })
     ]);
 
+    const agentsWithErrors = cliService.getAgentsWithRecentErrors(logsData);
+    const tokenAggs = cliService.calculateTokenAggregations(sessionsData?.sessions);
+
     // Process agents data - byAgent is now normalized to object by cliService
     const agents = [];
     let totalTokens = 0;
@@ -49,7 +52,8 @@ router.get('/', async (req, res) => {
         const tokens = agentData.totalTokens || 0;
         const contextTokens = agentData.contextTokens || 204800;
         const lastActiveMs = agentData.lastActiveAgeMs || Infinity;
-        const status = cliService.calculateStatus(lastActiveMs);
+        const hasError = agentsWithErrors.has(agentId);
+        const status = cliService.calculateStatus(lastActiveMs, hasError);
         
         if (status === 'working') activeAgents++;
         totalTokens += tokens;
@@ -60,6 +64,7 @@ router.get('/', async (req, res) => {
           name: metadata.name,
           emoji: metadata.emoji,
           status: status,
+          hasRecentError: hasError,
           model: agentData.model || 'glm-5',
           contextTokens: contextTokens,
           inputTokens: agentData.inputTokens || 0,
@@ -156,7 +161,9 @@ router.get('/', async (req, res) => {
         agents: agents.length,
         activeAgents,
         totalTokens,
-        totalSessions
+        totalSessions,
+        tokensToday: tokenAggs.today,
+        tokensWeek: tokenAggs.week
       }
     };
 
