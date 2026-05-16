@@ -82,6 +82,13 @@ Then open http://localhost:5173 in your browser.
 
 The Vite dev server proxies `/api/*` requests to `http://localhost:3200`.
 
+To point the frontend at a separate backend, set `VITE_API_BASE` before
+starting Vite:
+
+```bash
+VITE_API_BASE=http://localhost:3200 npm run dev
+```
+
 ### Option 2: Production Mode (Single Server)
 
 Build the frontend and serve everything from a single Express server:
@@ -102,6 +109,13 @@ The Express server:
 - Serves the API at `/api/*`
 - Serves the frontend static files at `/*`
 - Falls back to `index.html` for SPA routing
+
+By default the frontend uses same-origin `/api/*` requests. If you need to
+build it for a separate API host, set `VITE_API_BASE` during the build:
+
+```bash
+VITE_API_BASE=https://your-api-host.example npm run build
+```
 
 ---
 
@@ -161,7 +175,7 @@ https://your-hostname.ts.net
 tailscale serve status
 
 # Remove the serve config
-tailscale serve --bg=none tcp://localhost:3203
+tailscale serve --bg=none tcp://localhost:3200
 
 # Or reset all serve configs
 tailscale serve reset
